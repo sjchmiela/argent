@@ -60,6 +60,29 @@ function findDependencyMissing(err: unknown): DependencyMissingError | null {
   return null;
 }
 
+function extractDeviceArg(data: unknown): string | null {
+  if (!data || typeof data !== "object") return null;
+  const record = data as Record<string, unknown>;
+  if (typeof record.udid === "string") return record.udid;
+  if (typeof record.device_id === "string") return record.device_id;
+  return null;
+}
+
+type InvocationMeta = { platform?: "ios" | "android"; deviceId?: string };
+
+function extractInvocationMeta(hasCapability: boolean, data: unknown): InvocationMeta | null {
+  if (!hasCapability || !data || typeof data !== "object") return null;
+  const record = data as Record<string, unknown>;
+  const deviceArg = extractDeviceArg(record);
+  if (deviceArg) {
+    return { platform: resolveDevice(deviceArg).platform, deviceId: deviceArg };
+  }
+  if (typeof record.avdName === "string") {
+    return { platform: "android" };
+  }
+  return null;
+}
+
 // ── HTTP app ────────────────────────────────────────────────────────
 
 export interface HttpAppOptions {
@@ -76,6 +99,11 @@ export interface HttpAppOptions {
    * opted into network exposure (and is warned at startup).
    */
   bindHost?: string;
+  /** Optional telemetry hook for per-invocation platform/device metadata. */
+  recordInvocation?: (
+    toolId: string,
+    meta: InvocationMeta
+  ) => () => void;
 }
 
 export interface HttpAppHandle {
@@ -356,12 +384,7 @@ export function createHttpApp(registry: Registry, options?: HttpAppOptions): Htt
       // tools). Honour both so an Android serial reaching an iOS-only
       // device_id-tool is rejected at the gate instead of falling through
       // to the deeper blueprint error (which surfaces as a generic 500).
-      const deviceArg =
-        typeof parsedData?.udid === "string"
-          ? parsedData.udid
-          : typeof parsedData?.device_id === "string"
-            ? parsedData.device_id
-            : null;
+      const deviceArg = extractDeviceArg(parsedData);
       if (def.capability && deviceArg) {
         try {
           const device = resolveDevice(deviceArg);
@@ -397,6 +420,15 @@ export function createHttpApp(registry: Registry, options?: HttpAppOptions): Htt
       res.on("close", () => {
         if (!res.writableFinished) controller.abort();
       });
+
+      // Hashing happens in the telemetry listener, not in the HTTP layer.
+      let releaseInvocationMeta: (() => void) | undefined;
+      if (options?.recordInvocation) {
+        const invocationMeta = extractInvocationMeta(Boolean(def.capability), parsedData);
+        if (invocationMeta) {
+          releaseInvocationMeta = options.recordInvocation(name, invocationMeta);
+        }
+      }
 
       try {
         const data = await registry.invokeTool(name, parsedData, {
@@ -450,6 +482,8 @@ export function createHttpApp(registry: Registry, options?: HttpAppOptions): Htt
           return;
         }
         res.status(500).json({ error: formatErrorForAgent(err) });
+      } finally {
+        releaseInvocationMeta?.();
       }
     }
   );

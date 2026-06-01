@@ -20,6 +20,7 @@ import {
 } from "./errors";
 import { parseURN } from "./urn";
 import { zodObjectToJsonSchema } from "./zod-to-json-schema";
+import { randomUUID } from "node:crypto";
 
 export class Registry {
   /** Single map: URN -> ServiceNode (all instances). */
@@ -82,7 +83,8 @@ export class Registry {
 
     const { definition } = record;
     const startTime = performance.now();
-    this.events.emit("toolInvoked", id);
+    const toolInvocationId = randomUUID();
+    this.events.emit("toolInvoked", id, toolInvocationId);
 
     try {
       // Validate params against the tool's zod schema for EVERY dispatch path,
@@ -116,7 +118,7 @@ export class Registry {
       const result = await definition.execute(resolvedServices, effectiveParams, ctx);
 
       const duration = performance.now() - startTime;
-      this.events.emit("toolCompleted", id, duration);
+      this.events.emit("toolCompleted", id, toolInvocationId, duration);
       return result as TResult;
     } catch (error) {
       const originalMsg = error instanceof Error ? error.message : String(error);
@@ -130,7 +132,13 @@ export class Registry {
               cause: error instanceof Error ? error : new Error(String(error)),
             });
 
-      this.events.emit("toolFailed", id, wrappedError);
+      this.events.emit(
+        "toolFailed",
+        id,
+        toolInvocationId,
+        wrappedError,
+        performance.now() - startTime
+      );
       throw wrappedError;
     }
   }
