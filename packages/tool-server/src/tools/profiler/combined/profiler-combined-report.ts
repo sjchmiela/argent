@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ToolDefinition } from "@argent/registry";
+import { FAILURE_CODES, FailureError, type ToolDefinition } from "@argent/registry";
 import { getCachedProfilerPaths } from "../../../blueprints/react-profiler-session";
 import {
   nativeProfilerSessionRef,
@@ -64,14 +64,24 @@ Fails if either react-profiler-analyze or native-profiler-analyze has not been c
     let memoryLeaks: MemoryLeak[];
     if (nativeApi.platform === "android") {
       if (!nativeApi.traceFile) {
-        throw new Error("No native profiler data. Run native-profiler-analyze first.");
+        throw new FailureError("No native profiler data. Run native-profiler-analyze first.", {
+          error_code: FAILURE_CODES.PROFILER_DATA_NOT_LOADED,
+          failure_stage: "profiler_combined_report_load_native_data",
+          failure_area: "tool_server",
+          error_kind: "validation",
+        });
       }
       const data = await loadAndroidCombinedData(nativeApi.traceFile, nativeApi.appProcess ?? "");
       uiHangs = data.uiHangs;
       memoryLeaks = [];
     } else {
       if (!nativeApi.parsedData) {
-        throw new Error("No native profiler data. Run native-profiler-analyze first.");
+        throw new FailureError("No native profiler data. Run native-profiler-analyze first.", {
+          error_code: FAILURE_CODES.PROFILER_DATA_NOT_LOADED,
+          failure_stage: "profiler_combined_report_load_native_data",
+          failure_area: "tool_server",
+          error_kind: "validation",
+        });
       }
       uiHangs = nativeApi.parsedData.uiHangs;
       memoryLeaks = nativeApi.parsedData.memoryLeaks;
@@ -80,13 +90,23 @@ Fails if either react-profiler-analyze or native-profiler-analyze has not been c
     // Read-only: resolve react paths from cache only — no live CDP connection needed.
     const sessionPaths = getCachedProfilerPaths(params.port, params.device_id);
     if (!sessionPaths?.commitsPath) {
-      throw new Error("No React commit data. Run react-profiler-analyze first.");
+      throw new FailureError("No React commit data. Run react-profiler-analyze first.", {
+        error_code: FAILURE_CODES.PROFILER_DATA_NOT_LOADED,
+        failure_stage: "profiler_combined_report_load_react_data",
+        failure_area: "tool_server",
+        error_kind: "validation",
+      });
     }
 
     const onDisk = await readCommitTree(sessionPaths.commitsPath);
     const commitTree = { commits: onDisk.commits, hookNames: new Map() };
     if (commitTree.commits.length === 0) {
-      throw new Error("No React commit data. Run react-profiler-analyze first.");
+      throw new FailureError("No React commit data. Run react-profiler-analyze first.", {
+        error_code: FAILURE_CODES.PROFILER_DATA_NOT_LOADED,
+        failure_stage: "profiler_combined_report_load_react_data",
+        failure_area: "tool_server",
+        error_kind: "validation",
+      });
     }
 
     let cpuProfile = null;
@@ -98,19 +118,37 @@ Fails if either react-profiler-analyze or native-profiler-analyze has not been c
     const nativeWallStart = nativeApi.wallClockStartMs;
 
     if (!reactWallStart && !nativeWallStart) {
-      throw new Error(
+      throw new FailureError(
         "Missing wall-clock anchor from both profilers. Re-run the full profiling session " +
-          "(native-profiler-start + react-profiler-start)."
+          "(native-profiler-start + react-profiler-start).",
+        {
+          error_code: FAILURE_CODES.PROFILER_DATA_NOT_LOADED,
+          failure_stage: "profiler_combined_report_time_anchor",
+          failure_area: "tool_server",
+          error_kind: "validation",
+        }
       );
     } else if (!reactWallStart) {
-      throw new Error(
+      throw new FailureError(
         "Missing wall-clock anchor from React Profiler (profileStartWallMs not found). " +
-          "Re-run the profiling session starting with react-profiler-start."
+          "Re-run the profiling session starting with react-profiler-start.",
+        {
+          error_code: FAILURE_CODES.PROFILER_DATA_NOT_LOADED,
+          failure_stage: "profiler_combined_report_time_anchor",
+          failure_area: "tool_server",
+          error_kind: "validation",
+        }
       );
     } else if (!nativeWallStart) {
-      throw new Error(
+      throw new FailureError(
         "Missing wall-clock anchor from native profiler (wallClockStartMs not found). " +
-          "Re-run the profiling session starting with native-profiler-start."
+          "Re-run the profiling session starting with native-profiler-start.",
+        {
+          error_code: FAILURE_CODES.PROFILER_DATA_NOT_LOADED,
+          failure_stage: "profiler_combined_report_time_anchor",
+          failure_area: "tool_server",
+          error_kind: "validation",
+        }
       );
     }
 
