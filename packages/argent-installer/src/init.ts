@@ -110,7 +110,7 @@ export async function init(args: string[]): Promise<void> {
   telemetryInit("installer");
   printTelemetryNotice();
 
-  await track("installation:cli_init_start", {
+  track("installation:cli_init_start", {
     package_manager: detectPackageManager(),
     is_non_interactive: nonInteractive,
   });
@@ -143,7 +143,7 @@ export async function init(args: string[]): Promise<void> {
     isSuccess: boolean,
     failureSignal?: InstallerFailureSignal
   ): Promise<void> => {
-    await track("installation:package_action", {
+    track("installation:package_action", {
       trigger: "init",
       action,
       is_success: isSuccess,
@@ -181,15 +181,15 @@ export async function init(args: string[]): Promise<void> {
       });
 
       if (p.isCancel(installChoice) || installChoice === "cancel") {
-        await track("installation:global_install_decision", { decision: "cancel" });
-        await track("installation:cli_init_cancel", { step: "global_install" });
+        track("installation:global_install_decision", { decision: "cancel" });
+        track("installation:cli_init_cancel", { step: "global_install" });
         await finalizeInitTelemetry();
         p.cancel("Installation cancelled.");
         process.exit(0);
       }
     }
 
-    await track("installation:global_install_decision", { decision: "install" });
+    track("installation:global_install_decision", { decision: "install" });
 
     const pm = detectPackageManager();
     const installTarget = fromTar ?? PACKAGE_NAME;
@@ -236,7 +236,7 @@ export async function init(args: string[]): Promise<void> {
     }
   } else {
     const packageActionStartedAt = performance.now();
-    await track("installation:global_install_decision", { decision: "already_installed" });
+    track("installation:global_install_decision", { decision: "already_installed" });
     await trackPackageAction("already_installed", packageActionStartedAt, true);
     let latest: string | null = null;
     const spinner = p.spinner();
@@ -275,7 +275,7 @@ export async function init(args: string[]): Promise<void> {
           ],
         });
 
-        await track("installation:update_decision", {
+        track("installation:update_decision", {
           from_major: fromMajor,
           to_major: toMajor,
           decision: p.isCancel(updateChoice) ? "skip" : (updateChoice as "update" | "skip"),
@@ -308,7 +308,7 @@ export async function init(args: string[]): Promise<void> {
             }
             const skillTelemetrySummary = summarizeSkillRefreshForTelemetry(skillRefreshResults);
             if (skillTelemetrySummary.scope_count > 0) {
-              await track("installation:skill_refresh_result", {
+              track("installation:skill_refresh_result", {
                 is_success: skillTelemetrySummary.failed_count === 0,
                 ...skillTelemetrySummary,
                 ...(skillTelemetrySummary.failed_count > 0 ? INSTALL_SKILLS_REFRESH_FAILED : {}),
@@ -330,7 +330,7 @@ export async function init(args: string[]): Promise<void> {
     } else if (latest) {
       const fromMajor = Number.parseInt(version.split(".")[0] ?? "0", 10) || 0;
       const toMajor = Number.parseInt(latest.split(".")[0] ?? "0", 10) || 0;
-      await track("installation:update_decision", {
+      track("installation:update_decision", {
         from_major: fromMajor,
         to_major: toMajor,
         decision: "no_update",
@@ -378,7 +378,7 @@ export async function init(args: string[]): Promise<void> {
     });
 
     if (p.isCancel(selected)) {
-      await track("installation:cli_init_cancel", { step: "editors" });
+      track("installation:cli_init_cancel", { step: "editors" });
       await finalizeInitTelemetry();
       p.cancel("Initialization cancelled.");
       process.exit(0);
@@ -421,7 +421,7 @@ export async function init(args: string[]): Promise<void> {
     });
 
     if (p.isCancel(scopeChoice)) {
-      await track("installation:cli_init_cancel", { step: "scope" });
+      track("installation:cli_init_cancel", { step: "scope" });
       await finalizeInitTelemetry();
       p.cancel("Initialization cancelled.");
       process.exit(0);
@@ -442,7 +442,7 @@ export async function init(args: string[]): Promise<void> {
       });
 
       if (p.isCancel(customPathInput)) {
-        await track("installation:cli_init_cancel", { step: "scope" });
+        track("installation:cli_init_cancel", { step: "scope" });
         await finalizeInitTelemetry();
         p.cancel("Initialization cancelled.");
         process.exit(0);
@@ -456,7 +456,7 @@ export async function init(args: string[]): Promise<void> {
   const effectiveRoot = scope === "custom" ? customRoot! : projectRoot;
   const normalizedScope: "local" | "global" = scope === "global" ? "global" : "local";
 
-  await track("installation:editors_select", {
+  track("installation:editors_select", {
     editors: selectedAdapters.map((a) => sanitizeEditorName(a.name)),
     detected_editor_count: detected.length,
     scope,
@@ -533,7 +533,7 @@ export async function init(args: string[]): Promise<void> {
       });
 
       if (p.isCancel(allowlistChoice)) {
-        await track("installation:cli_init_cancel", { step: "allowlist" });
+        track("installation:cli_init_cancel", { step: "allowlist" });
         await finalizeInitTelemetry();
         p.cancel("Initialization cancelled.");
         process.exit(0);
@@ -543,7 +543,7 @@ export async function init(args: string[]): Promise<void> {
     }
   }
 
-  await track("installation:allowlist_decision", {
+  track("installation:allowlist_decision", {
     is_enabled: allowlistEnabled,
   });
 
@@ -624,7 +624,7 @@ export async function init(args: string[]): Promise<void> {
     });
 
     if (p.isCancel(choice)) {
-      await track("installation:cli_init_cancel", { step: "skills" });
+      track("installation:cli_init_cancel", { step: "skills" });
       await finalizeInitTelemetry();
       p.cancel("Initialization cancelled.");
       process.exit(0);
@@ -696,7 +696,7 @@ export async function init(args: string[]): Promise<void> {
     }
   }
 
-  await track("installation:skill_install", {
+  track("installation:skill_install", {
     method: skillsMethod,
     is_online: online,
     has_offline_cache: offlineWithCache,
