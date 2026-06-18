@@ -1,4 +1,7 @@
-import { attachRegistryLogger } from "@argent/registry";
+import * as path from "node:path";
+import { homedir } from "node:os";
+import { isFlagEnabled } from "@argent/configuration-core";
+import { attachRegistryEventLogger, attachRegistryLogger } from "@argent/registry";
 import { createHttpApp } from "./http";
 import { createRegistry } from "./utils/setup-registry";
 import { startSimulatorWatcher } from "./utils/simulator-watcher";
@@ -88,6 +91,15 @@ export function start(): void {
   // ── Bootstrap ─────────────────────────────────────────────────────
   const registry = createRegistry();
   attachRegistryLogger(registry);
+  const eventLog = isFlagEnabled("tool-server-event-log")
+    ? attachRegistryEventLogger(
+        registry,
+        process.env.ARGENT_EVENT_LOG || path.join(homedir(), ".argent", "tool-server-events.jsonl")
+      )
+    : null;
+  if (eventLog) {
+    process.stderr.write(`[tool-server] Event log: ${eventLog.filePath}\n`);
+  }
   const updateChecker = startUpdateChecker();
 
   const { stop: stopWatcher, ready: watcherReady } = startSimulatorWatcher(registry);
@@ -159,6 +171,7 @@ export function start(): void {
     cancelPendingClose();
     previewWindow.dispose();
     updateChecker.dispose();
+    eventLog?.dispose();
     stopWatcher();
     httpHandle.dispose();
     await registry.dispose();
