@@ -47,6 +47,5 @@ export {
   ToolExecutionError,
 } from "./errors";
 export { Registry } from "./registry";
-export { attachRegistryLogger, attachRegistryEventLogger } from "./logger";
-export type { RegistryEventLogHandle } from "./logger";
+export { attachRegistryLogger } from "./logger";
 export { zodObjectToJsonSchema } from "./zod-to-json-schema";

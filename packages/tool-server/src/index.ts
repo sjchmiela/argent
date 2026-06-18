@@ -1,8 +1,9 @@
 import * as path from "node:path";
 import { homedir } from "node:os";
 import { isFlagEnabled } from "@argent/configuration-core";
-import { attachRegistryEventLogger, attachRegistryLogger } from "@argent/registry";
+import { attachRegistryLogger } from "@argent/registry";
 import { createHttpApp } from "./http";
+import { attachRegistryEventLogger, createToolServerEventLog } from "./event-log";
 import { createRegistry } from "./utils/setup-registry";
 import { startSimulatorWatcher } from "./utils/simulator-watcher";
 import { startUpdateChecker } from "./utils/update-checker";
@@ -92,11 +93,13 @@ export function start(): void {
   const registry = createRegistry();
   attachRegistryLogger(registry);
   const eventLog = isFlagEnabled("tool-server-event-log")
-    ? attachRegistryEventLogger(
-        registry,
+    ? createToolServerEventLog(
         process.env.ARGENT_EVENT_LOG || path.join(homedir(), ".argent", "tool-server-events.jsonl")
       )
     : null;
+  if (eventLog) {
+    attachRegistryEventLogger(registry, eventLog);
+  }
   if (eventLog) {
     process.stderr.write(`[tool-server] Event log: ${eventLog.filePath}\n`);
   }
@@ -165,16 +168,21 @@ export function start(): void {
   // `shutdown` closes over `server` by reference — reads the current value when
   // called, so it works correctly whether server has started yet or not.
   shutdown = async (exitCode = 0) => {
+    eventLog?.log({
+      type: "tool_server.stopping",
+      msg: "Tool server is stopping.",
+      exitCode,
+    });
     variantProposalStore.events.off("awaitParked", onAwaitParked);
     variantProposalStore.events.off("selectionSubmitted", onSelectionSubmitted);
     variantProposalStore.events.off("closeRequested", onCloseRequested);
     cancelPendingClose();
     previewWindow.dispose();
     updateChecker.dispose();
-    eventLog?.dispose();
     stopWatcher();
     httpHandle.dispose();
     await registry.dispose();
+    eventLog?.dispose();
     if (server) {
       const forceExit = setTimeout(() => process.exit(exitCode), PROCESS_TIMEOUT_MS);
       await new Promise<void>((resolve) => server!.close(() => resolve()));
@@ -202,6 +210,14 @@ export function start(): void {
         process.stdout.write(`Tools server listening on ${origin}\n`);
         process.stderr.write(`  GET  ${origin}/tools\n`);
         process.stderr.write(`  POST ${origin}/tools/:name\n`);
+        eventLog?.log({
+          type: "tool_server.started",
+          msg: `Tool server started on ${origin}.`,
+          origin,
+          host: HOST,
+          port: boundPort,
+          pid: process.pid,
+        });
         if (idleTimeoutMs > 0) {
           process.stderr.write(`  Idle timeout: ${idleMinutes}min\n`);
         }
@@ -213,6 +229,15 @@ export function start(): void {
         process.stderr.write(
           `[tool-server] Failed to bind ${HOST}:${PORT} — ${code}${err.message}\n`
         );
+        eventLog?.log({
+          type: "tool_server.bind_failed",
+          msg: `Tool server failed to bind ${HOST}:${PORT}.`,
+          host: HOST,
+          port: PORT,
+          code: err.code,
+          message: err.message,
+        });
+        eventLog?.dispose();
         process.exit(1);
       });
       // Bolt the per-Chromium-device WebSocket upgrade handler onto the live

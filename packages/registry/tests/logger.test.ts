@@ -1,9 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
 import { Registry } from "../src/registry";
-import { attachRegistryEventLogger, attachRegistryLogger } from "../src/logger";
+import { attachRegistryLogger } from "../src/logger";
 import { createStaticBlueprint, createMockToolDef, staticUrn } from "./helpers";
 
 let logSpy: ReturnType<typeof vi.spyOn>;
@@ -199,85 +196,5 @@ describe("attachRegistryLogger — end-to-end with Registry", () => {
     const toolFailedLog = errorCalls.find((c) => c.includes("toolFailed bad-tool"));
     expect(toolFailedLog).toBeDefined();
     expect(toolFailedLog).toContain("bad-tool execution failure");
-  });
-});
-
-describe("attachRegistryEventLogger", () => {
-  function eventLogPath(): string {
-    return path.join(fs.mkdtempSync(path.join(os.tmpdir(), "argent-events-")), "events.jsonl");
-  }
-
-  function readEvents(filePath: string): Array<Record<string, unknown>> {
-    return fs
-      .readFileSync(filePath, "utf8")
-      .trim()
-      .split("\n")
-      .map((line) => JSON.parse(line) as Record<string, unknown>);
-  }
-
-  it("writes registry lifecycle events as JSONL", () => {
-    const registry = new Registry();
-    const filePath = eventLogPath();
-    const handle = attachRegistryEventLogger(registry, filePath);
-
-    registry.events.emit("toolInvoked", "screenshot");
-    registry.events.emit("toolCompleted", "screenshot", 12.34);
-    handle.dispose();
-
-    const events = readEvents(filePath);
-    expect(events).toEqual([
-      expect.objectContaining({
-        type: "tool.invoked",
-        toolId: "screenshot",
-        ts: expect.any(String),
-      }),
-      expect.objectContaining({
-        type: "tool.completed",
-        toolId: "screenshot",
-        durationMs: 12.34,
-        ts: expect.any(String),
-      }),
-    ]);
-  });
-
-  it("serializes failed tool errors with nested causes", () => {
-    const registry = new Registry();
-    const filePath = eventLogPath();
-    const handle = attachRegistryEventLogger(registry, filePath);
-
-    const cause = new Error("socket closed");
-    registry.events.emit(
-      "toolFailed",
-      "debugger-evaluate",
-      new Error("evaluate failed", { cause })
-    );
-    handle.dispose();
-
-    const [event] = readEvents(filePath);
-    expect(event).toMatchObject({
-      type: "tool.failed",
-      toolId: "debugger-evaluate",
-      error: {
-        name: "Error",
-        message: "evaluate failed",
-        cause: {
-          name: "Error",
-          message: "socket closed",
-        },
-      },
-    });
-  });
-
-  it("starts a fresh event log file", () => {
-    const registry = new Registry();
-    const filePath = eventLogPath();
-    fs.writeFileSync(filePath, "stale\n");
-
-    const handle = attachRegistryEventLogger(registry, filePath);
-    registry.events.emit("toolInvoked", "screenshot");
-    handle.dispose();
-
-    expect(fs.readFileSync(filePath, "utf8")).not.toContain("stale");
-    expect(readEvents(filePath)).toHaveLength(1);
   });
 });
